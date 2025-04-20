@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Breathe</title>
+    <base href="/" />
+
+    <!-- 1. Your Firebase config: -->
+    <script type="module">
+      // Import the functions you need from the SDKs you need
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+      import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
+      // TODO: add other SDKs you need:
+      // import { getAuth } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+      // Your web app's Firebase configuration
+      const firebaseConfig = {
+        apiKey: "AIzaSyDeTnHLQ9Ds5oHtv-eIV8e2dG4uCUafCl8",
+        authDomain: "breathe-app-95c7a.firebaseapp.com",
+        projectId: "breathe-app-95c7a",
+        storageBucket: "breathe-app-95c7a.firebasestorage.app",
+        messagingSenderId: "431193258328",
+        appId: "1:431193258328:web:46123958f347ac6b300d2d",
+        measurementId: "G-W8R08KNB1G"
+      };
+
+      // Initialize Firebase
+      const app = initializeApp(firebaseConfig);
+      const analytics = getAnalytics(app);
+      // const auth = getAuth(app);  // if you’re using firebase_auth on web
+    </script>
+
+    <!-- 2. (Optional) Google Maps JS API, if you’re using maps on web -->
+    <!--
+    <script
+      src="https://maps.googleapis.com/maps/api/js?key=YOUR_WEB_MAPS_KEY">
+    </script>
+    -->
+
+    <link rel="manifest" href="manifest.json" />
+    <meta name="description" content="Breathe – real‑time air quality" />
+    <meta name="theme-color" content="#000000" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+  </head>
+  <body>
+    <!-- Flutter's main entrypoint -->
+    <script src="main.dart.js" type="application/javascript"></script>
+  </body>
+</html>

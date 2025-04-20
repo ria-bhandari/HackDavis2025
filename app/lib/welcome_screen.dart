@@ -1,19 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'main.dart'; // to import Shell
+
+import 'auth_screen.dart';
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({Key? key}) : super(key: key);
 
-  void _enterApp(BuildContext context) {
-    Navigator.of(context).pushReplacement(
-      PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const Shell(),
-        transitionsBuilder: (_, anim, __, child) {
-          return FadeTransition(opacity: anim, child: child);
-        },
-        transitionDuration: const Duration(milliseconds: 800),
-      ),
+  void _goToAuth(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const AuthScreen()),
     );
   }
 
@@ -23,10 +18,7 @@ class WelcomeScreen extends StatelessWidget {
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [
-              Color(0xFFB3E5FC), // light blue
-              Color(0xFF0277BD), // deep blue
-            ],
+            colors: [Color(0xFFB3E5FC), Color(0xFF0277BD)],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
@@ -59,20 +51,20 @@ class WelcomeScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 48),
                   ElevatedButton(
-                    onPressed: () => _enterApp(context),
+                    onPressed: () => _goToAuth(context),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
                       foregroundColor: const Color(0xFF0277BD),
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 40, vertical: 16),
+                        horizontal: 40, vertical: 16),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                        borderRadius: BorderRadius.circular(12)),
                       elevation: 6,
                     ),
                     child: Text(
                       'Get Started',
                       style: GoogleFonts.poppins(
-                          fontSize: 18, fontWeight: FontWeight.w600),
+                        fontSize: 18, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ],

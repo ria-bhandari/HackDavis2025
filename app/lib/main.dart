@@ -1,29 +1,82 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:provider/provider.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flip_card/flip_card.dart';
 import 'package:animations/animations.dart';
+import 'package:geolocator/geolocator.dart';
 
-import 'welcome_screen.dart';
-import 'real_time_map_screen.dart';
 import 'app_theme.dart';
+import 'welcome_screen.dart';
+import 'auth_screen.dart';
+import 'ble_provider.dart';
 import 'reading.dart';
 import 'data_screen.dart';
 import 'analytics_screen.dart';
-import 'kmeans.dart';
+import 'real_time_map_screen.dart';
 
-void main() => runApp(const BreatheApp());
+// ───────────────────── Thresholds for air‑quality colours ─────────────────────
+@immutable
+class _Threshold {
+  const _Threshold(this.max, this.color);
+  final num max;
+  final Color color;
+}
+
+const _eco2Scale = [
+  _Threshold(800, Colors.green),
+  _Threshold(1200, Colors.yellow),
+  _Threshold(2000, Colors.orange),
+  _Threshold(double.infinity, Colors.red),
+];
+const _tvocScale = [
+  _Threshold(220, Colors.green),
+  _Threshold(660, Colors.yellow),
+  _Threshold(2200, Colors.orange),
+  _Threshold(double.infinity, Colors.red),
+];
+
+Color _scaleColor(List<_Threshold> scale, int value) =>
+    scale.firstWhere((t) => value <= t.max).color;
+Color colourForEco2(int eco2) => _scaleColor(_eco2Scale, eco2);
+Color colourForTvoc(int tvoc) => _scaleColor(_tvocScale, tvoc);
+Color _contrastOn(Color bg) =>
+    bg.computeLuminance() > .5 ? Colors.black : Colors.white;
+
+// ──────────────────────────────────────────────────────────────────────────────
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  runApp(
+    MultiProvider(
+      providers: [ChangeNotifierProvider(create: (_) => BleProvider())],
+      child: const BreatheApp(),
+    ),
+  );
+}
 
 class BreatheApp extends StatelessWidget {
   const BreatheApp({super.key});
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false,
       title: 'Breathe',
       theme: AppTheme.light(),
-      home: const WelcomeScreen(),
+      debugShowCheckedModeBanner: false,
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (ctx, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          }
+          if (snap.data == null) {
+            return const WelcomeScreen();
+          }
+          return const Shell();
+        },
+      ),
     );
   }
 }
@@ -37,23 +90,24 @@ class Shell extends StatefulWidget {
 
 class _ShellState extends State<Shell> {
   int _idx = 0;
-  Position? _pos;
   final _hist = <Reading>[];
-  String eco2 = 'N/A', tvoc = 'N/A';
 
   @override
   Widget build(BuildContext context) {
+    final ble = context.watch<BleProvider>();
+    // record history when readings update
+    if (ble.eco2 != 'N/A' && ble.tvoc != 'N/A') {
+      _hist.add(Reading(
+        eco2: ble.eco2,
+        etvoc: ble.tvoc,
+        time: DateTime.now(),
+        lat: ble.position?.latitude,
+        lng: ble.position?.longitude,
+      ));
+    }
+
     final pages = [
-      Dashboard(
-        onRead: (e, t, r) {
-          setState(() {
-            eco2 = e;
-            tvoc = t;
-            _hist.add(r);
-          });
-        },
-        onLoc: (p) => setState(() => _pos = p),
-      ),
+      const Dashboard(),
       const RealTimeMapScreen(),
       DataScreen(history: _hist),
       AnalyticsScreen(history: _hist),
@@ -61,8 +115,8 @@ class _ShellState extends State<Shell> {
 
     return Scaffold(
       body: PageTransitionSwitcher(
-        transitionBuilder: (child, anim, secondaryAnim) =>
-            FadeThroughTransition(animation: anim, secondaryAnimation: secondaryAnim, child: child),
+        transitionBuilder: (c, a1, a2) =>
+            FadeThroughTransition(animation: a1, secondaryAnimation: a2, child: c),
         child: pages[_idx],
       ),
       bottomNavigationBar: NavigationBar(
@@ -70,9 +124,9 @@ class _ShellState extends State<Shell> {
         onDestinationSelected: (i) => setState(() => _idx = i),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.dashboard_outlined), label: 'Live'),
-          NavigationDestination(icon: Icon(Icons.map),               label: 'Map'),
-          NavigationDestination(icon: Icon(Icons.table_chart),       label: 'Data'),
-          NavigationDestination(icon: Icon(Icons.analytics),         label: 'Analytics'),
+          NavigationDestination(icon: Icon(Icons.map), label: 'Map'),
+          NavigationDestination(icon: Icon(Icons.table_chart), label: 'Data'),
+          NavigationDestination(icon: Icon(Icons.analytics), label: 'Analytics'),
         ],
       ),
     );
@@ -80,180 +134,65 @@ class _ShellState extends State<Shell> {
 }
 
 /* ─────────── Dashboard page ─────────── */
-/* ─────────── Dashboard page ─────────── */
 class Dashboard extends StatefulWidget {
-  final void Function(String, String, Reading) onRead;
-  final void Function(Position) onLoc;
-  const Dashboard({super.key, required this.onRead, required this.onLoc});
+  const Dashboard({super.key});
   @override
   State<Dashboard> createState() => _DashState();
 }
 
 class _DashState extends State<Dashboard> {
-  BluetoothDevice? _dev;
-  StreamSubscription<BluetoothConnectionState>? _stateSub;
-
-  final nusSvc = Guid('6E400001-B5A3-F393-E0A9-E50E24DCCA9E');
-  final nusTx  = Guid('6E400003-B5A3-F393-E0A9-E50E24DCCA9E');
-
-  String _status = 'Idle', eco2 = 'N/A', tvoc = 'N/A';
-  Position? _pos;
-  String _buf = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _scanAndConnect();          // one‑shot
-  }
-
-  @override
-  void dispose() {
-    _stateSub?.cancel();
-    super.dispose();
-  }
-
-  /* ---------- BLE one‑shot connect ---------- */
-  void _scanAndConnect() {
-    if (_dev != null) return;           // already connected or connecting
-    setState(() => _status = 'Scanning…');
-
-    FlutterBluePlus.startScan(withServices: [nusSvc], timeout: const Duration(seconds: 5));
-
-    FlutterBluePlus.scanResults.listen((results) async {
-      if (_dev != null || results.isEmpty) return;
-      final match = results.first;
-      _dev = match.device;
-      await FlutterBluePlus.stopScan();
-      await _dev!.connect();
-
-      _stateSub = _dev!.connectionState.listen((s) {
-        if (s == BluetoothConnectionState.disconnected) {
-          setState(() => _status = 'Disconnected');
-        }
-      });
-
-      setState(() => _status = 'Connected to ${_dev!.name}');
-      _discoverTx();
-      _updateLocation();
-    });
-  }
-
-  Future<void> _discoverTx() async {
-    for (final s in await _dev!.discoverServices()) {
-      if (s.uuid == nusSvc) {
-        for (final c in s.characteristics) {
-          if (c.uuid == nusTx) {
-            await c.setNotifyValue(true);
-            c.value.listen(_handle);
-            return;
-          }
-        }
-      }
-    }
-    setState(() => _status = 'TX char not found');
-  }
-
-  void _handle(List<int> b) {
-    _buf += String.fromCharCodes(b);
-    if (!_buf.contains('\n')) return;
-    final lines = _buf.split('\n');
-    _buf = lines.removeLast();
-
-    for (final line in lines) {
-      final p = line.split(',');
-      if (p.length == 2) {
-        setState(() {
-          eco2 = p[0];
-          tvoc  = p[1];
-        });
-        widget.onRead(
-          p[0],
-          p[1],
-          Reading(
-            eco2: p[0],
-            etvoc: p[1],
-            time: DateTime.now(),
-            lat: _pos?.latitude,
-            lng: _pos?.longitude,
-          ),
-        );
-        _updateLocation();
-      }
-    }
-  }
-
-  Future<void> _updateLocation() async {
-    _pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-    widget.onLoc(_pos!);
-    setState(() {});   // refresh location chip
-  }
-
-  /* ---------- UI ---------- */
   @override
   Widget build(BuildContext context) {
+    final ble = context.watch<BleProvider>();
     final cs = Theme.of(context).colorScheme;
+    final pos = ble.position;
+
     return SafeArea(
       child: Column(
         children: [
+          // Header with Connect button
           Container(
+            color: cs.primary,
+            padding: const EdgeInsets.all(16),
             width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [cs.primary, cs.secondary, cs.tertiary],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(32)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Icon(_dev != null ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
-                        color: Colors.white),
-                    const SizedBox(width: 8),
-                    Text(
-                      _status,
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleLarge!
-                          .copyWith(color: Colors.white, fontWeight: FontWeight.bold),
-                    ),
-                    const Spacer(),
-                    ElevatedButton(
-                      onPressed: _dev == null ? _scanAndConnect : null,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: cs.primary,
-                      ),
-                      child: const Text('Connect'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                if (_pos != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white38,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      '📍 ${_pos!.latitude.toStringAsFixed(4)}, ${_pos!.longitude.toStringAsFixed(4)}',
-                      style: TextStyle(color: cs.onPrimary),
-                    ),
+                ElevatedButton.icon(
+                  onPressed: () => context.read<BleProvider>().scanAndConnect(),
+                  icon: const Icon(Icons.bluetooth_searching),
+                  label: const Text('Connect'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: cs.primary,
                   ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    ble.status,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
               ],
             ),
           ),
+
           const SizedBox(height: 24),
-          _metric('eCO₂', eco2, 'ppm', Icons.cloud_done, cs),
+          _metric(context, 'eCO₂', ble.eco2, 'ppm', Icons.cloud_done, cs),
           const SizedBox(height: 16),
-          _metric('TVOC', tvoc, 'ppb', Icons.spa, cs),
+          _metric(context, 'TVOC', ble.tvoc, 'ppb', Icons.spa, cs),
           const Spacer(),
-          Text('Breathe 1.0', style: TextStyle(color: cs.outline)),
+
+          if (pos != null)
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Text(
+                '📍 ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}',
+              ),
+            ),
+
+          const SizedBox(height: 12),
+          Text('Breathe 1.0', style: TextStyle(color: cs.outline)),
           const SizedBox(height: 12),
         ],
       ),
@@ -261,19 +200,33 @@ class _DashState extends State<Dashboard> {
   }
 
   Widget _metric(
-      String title, String val, String unit, IconData icon, ColorScheme cs) {
+    BuildContext context,
+    String title,
+    String val,
+    String unit,
+    IconData icon,
+    ColorScheme cs,
+  ) {
+    final int parsed = int.tryParse(val) ?? 0;
+    final bg = title == 'eCO₂'
+        ? colourForEco2(parsed)
+        : colourForTvoc(parsed);
+    final fg = _contrastOn(bg);
+
     return FlipCard(
       speed: 400,
       front: Card(
+        elevation: 4,
         child: ListTile(
-          leading: Icon(icon, size: 36, color: cs.primary),
+          leading: Icon(icon, size: 36, color: bg),
           title: Text(title),
           subtitle: Text('$val $unit',
               style: Theme.of(context).textTheme.headlineMedium),
         ),
       ),
       back: Card(
-        color: cs.primaryContainer,
+        color: bg,
+        elevation: 4,
         child: Center(
           child: Text(
             'Latest\n$val $unit',
@@ -281,7 +234,7 @@ class _DashState extends State<Dashboard> {
             style: Theme.of(context)
                 .textTheme
                 .headlineMedium!
-                .copyWith(color: cs.onPrimaryContainer),
+                .copyWith(color: fg),
           ),
         ),
       ),
