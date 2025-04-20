@@ -69,7 +69,9 @@ class BreatheApp extends StatelessWidget {
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (ctx, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Scaffold(body: Center(child: CircularProgressIndicator()));
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
           }
           if (snap.data == null) {
             return const WelcomeScreen();
@@ -97,13 +99,15 @@ class _ShellState extends State<Shell> {
     final ble = context.watch<BleProvider>();
     // record history when readings update
     if (ble.eco2 != 'N/A' && ble.tvoc != 'N/A') {
-      _hist.add(Reading(
-        eco2: ble.eco2,
-        etvoc: ble.tvoc,
-        time: DateTime.now(),
-        lat: ble.position?.latitude,
-        lng: ble.position?.longitude,
-      ));
+      _hist.add(
+        Reading(
+          eco2: ble.eco2,
+          etvoc: ble.tvoc,
+          time: DateTime.now(),
+          lat: ble.position?.latitude,
+          lng: ble.position?.longitude,
+        ),
+      );
     }
 
     final pages = [
@@ -115,18 +119,28 @@ class _ShellState extends State<Shell> {
 
     return Scaffold(
       body: PageTransitionSwitcher(
-        transitionBuilder: (c, a1, a2) =>
-            FadeThroughTransition(animation: a1, secondaryAnimation: a2, child: c),
+        transitionBuilder:
+            (c, a1, a2) => FadeThroughTransition(
+              animation: a1,
+              secondaryAnimation: a2,
+              child: c,
+            ),
         child: pages[_idx],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _idx,
         onDestinationSelected: (i) => setState(() => _idx = i),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined), label: 'Live'),
+          NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            label: 'Live',
+          ),
           NavigationDestination(icon: Icon(Icons.map), label: 'Map'),
           NavigationDestination(icon: Icon(Icons.table_chart), label: 'Data'),
-          NavigationDestination(icon: Icon(Icons.analytics), label: 'Analytics'),
+          NavigationDestination(
+            icon: Icon(Icons.analytics),
+            label: 'Analytics',
+          ),
         ],
       ),
     );
@@ -208,9 +222,7 @@ class _DashState extends State<Dashboard> {
     ColorScheme cs,
   ) {
     final int parsed = int.tryParse(val) ?? 0;
-    final bg = title == 'eCO₂'
-        ? colourForEco2(parsed)
-        : colourForTvoc(parsed);
+    final bg = title == 'eCO₂' ? colourForEco2(parsed) : colourForTvoc(parsed);
     final fg = _contrastOn(bg);
 
     return FlipCard(
@@ -220,8 +232,10 @@ class _DashState extends State<Dashboard> {
         child: ListTile(
           leading: Icon(icon, size: 36, color: bg),
           title: Text(title),
-          subtitle: Text('$val $unit',
-              style: Theme.of(context).textTheme.headlineMedium),
+          subtitle: Text(
+            '$val $unit',
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
         ),
       ),
       back: Card(
@@ -231,10 +245,9 @@ class _DashState extends State<Dashboard> {
           child: Text(
             'Latest\n$val $unit',
             textAlign: TextAlign.center,
-            style: Theme.of(context)
-                .textTheme
-                .headlineMedium!
-                .copyWith(color: fg),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineMedium!.copyWith(color: fg),
           ),
         ),
       ),
