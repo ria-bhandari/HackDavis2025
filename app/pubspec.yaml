@@ -1,0 +1,42 @@
+name: app
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.7.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_blue_plus: ^1.30.5
+  google_maps_flutter: ^2.1.1  # To show maps
+  geolocator: ^8.2.0           # To get GPS location
+  google_fonts: ^6.2.1
+  animations:   ^2.0.8
+  flip_card:    ^0.7.0
+  # charts
+  fl_chart: ^0.66.0     # beautiful line & scatter
+  # local DB
+  drift: ^2.15.0        # ORM on top of sqlite
+  drift_sqflite: ^2.0.1
+  # ML & maths
+  collection: ^1.18.0   # k‑means helper
+  # state mgmt (optional)
+  provider: ^6.0.5
+  stats: ^2.1.0
+
+  
+  
+
+
+
+dev_dependencies:
+  drift_dev: ^2.15.0
+  build_runner: ^2.4.8
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
