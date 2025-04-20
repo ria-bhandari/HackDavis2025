@@ -13,6 +13,39 @@ import 'data_screen.dart';
 import 'analytics_screen.dart';
 import 'kmeans.dart';
 
+// ───────────────────── Thresholds for air‑quality colours ─────────────────────
+@immutable
+class _Threshold {
+  const _Threshold(this.max, this.color);
+  final num max;
+  final Color color;
+}
+
+const _eco2Scale = [
+  _Threshold(800, Colors.green),
+  _Threshold(1200, Colors.yellow),
+  _Threshold(2000, Colors.orange),
+  _Threshold(double.infinity, Colors.red),
+];
+const _tvocScale = [
+  _Threshold(220, Colors.green),
+  _Threshold(660, Colors.yellow),
+  _Threshold(2200, Colors.orange),
+  _Threshold(double.infinity, Colors.red),
+];
+
+Color _scaleColor(List<_Threshold> scale, int value) {
+  return scale.firstWhere((t) => value <= t.max).color;
+}
+
+Color colourForEco2(int eco2) => _scaleColor(_eco2Scale, eco2);
+Color colourForTvoc(int tvoc) => _scaleColor(_tvocScale, tvoc);
+
+Color _contrastOn(Color bg) =>
+    bg.computeLuminance() > .5 ? Colors.black : Colors.white;
+
+// ──────────────────────────────────────────────────────────────────────────────
+
 void main() => runApp(const BreatheApp());
 
 class BreatheApp extends StatelessWidget {
@@ -61,25 +94,34 @@ class _ShellState extends State<Shell> {
 
     return Scaffold(
       body: PageTransitionSwitcher(
-        transitionBuilder: (child, anim, secondaryAnim) =>
-            FadeThroughTransition(animation: anim, secondaryAnimation: secondaryAnim, child: child),
+        transitionBuilder:
+            (child, anim, secondaryAnim) => FadeThroughTransition(
+              animation: anim,
+              secondaryAnimation: secondaryAnim,
+              child: child,
+            ),
         child: pages[_idx],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _idx,
         onDestinationSelected: (i) => setState(() => _idx = i),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined), label: 'Live'),
-          NavigationDestination(icon: Icon(Icons.map),               label: 'Map'),
-          NavigationDestination(icon: Icon(Icons.table_chart),       label: 'Data'),
-          NavigationDestination(icon: Icon(Icons.analytics),         label: 'Analytics'),
+          NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            label: 'Live',
+          ),
+          NavigationDestination(icon: Icon(Icons.map), label: 'Map'),
+          NavigationDestination(icon: Icon(Icons.table_chart), label: 'Data'),
+          NavigationDestination(
+            icon: Icon(Icons.analytics),
+            label: 'Analytics',
+          ),
         ],
       ),
     );
   }
 }
 
-/* ─────────── Dashboard page ─────────── */
 /* ─────────── Dashboard page ─────────── */
 class Dashboard extends StatefulWidget {
   final void Function(String, String, Reading) onRead;
@@ -94,7 +136,7 @@ class _DashState extends State<Dashboard> {
   StreamSubscription<BluetoothConnectionState>? _stateSub;
 
   final nusSvc = Guid('6E400001-B5A3-F393-E0A9-E50E24DCCA9E');
-  final nusTx  = Guid('6E400003-B5A3-F393-E0A9-E50E24DCCA9E');
+  final nusTx = Guid('6E400003-B5A3-F393-E0A9-E50E24DCCA9E');
 
   String _status = 'Idle', eco2 = 'N/A', tvoc = 'N/A';
   Position? _pos;
@@ -103,7 +145,7 @@ class _DashState extends State<Dashboard> {
   @override
   void initState() {
     super.initState();
-    _scanAndConnect();          // one‑shot
+    _scanAndConnect();
   }
 
   @override
@@ -114,10 +156,13 @@ class _DashState extends State<Dashboard> {
 
   /* ---------- BLE one‑shot connect ---------- */
   void _scanAndConnect() {
-    if (_dev != null) return;           // already connected or connecting
+    if (_dev != null) return;
     setState(() => _status = 'Scanning…');
 
-    FlutterBluePlus.startScan(withServices: [nusSvc], timeout: const Duration(seconds: 5));
+    FlutterBluePlus.startScan(
+      withServices: [nusSvc],
+      timeout: const Duration(seconds: 5),
+    );
 
     FlutterBluePlus.scanResults.listen((results) async {
       if (_dev != null || results.isEmpty) return;
@@ -164,7 +209,7 @@ class _DashState extends State<Dashboard> {
       if (p.length == 2) {
         setState(() {
           eco2 = p[0];
-          tvoc  = p[1];
+          tvoc = p[1];
         });
         widget.onRead(
           p[0],
@@ -183,9 +228,11 @@ class _DashState extends State<Dashboard> {
   }
 
   Future<void> _updateLocation() async {
-    _pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+    _pos = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
     widget.onLoc(_pos!);
-    setState(() {});   // refresh location chip
+    setState(() {});
   }
 
   /* ---------- UI ---------- */
@@ -204,22 +251,28 @@ class _DashState extends State<Dashboard> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(32)),
+              borderRadius: const BorderRadius.vertical(
+                bottom: Radius.circular(32),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Icon(_dev != null ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
-                        color: Colors.white),
+                    Icon(
+                      _dev != null
+                          ? Icons.bluetooth_connected
+                          : Icons.bluetooth_disabled,
+                      color: Colors.white,
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       _status,
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleLarge!
-                          .copyWith(color: Colors.white, fontWeight: FontWeight.bold),
+                      style: Theme.of(context).textTheme.titleLarge!.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const Spacer(),
                     ElevatedButton(
@@ -235,7 +288,10 @@ class _DashState extends State<Dashboard> {
                 const SizedBox(height: 16),
                 if (_pos != null)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white38,
                       borderRadius: BorderRadius.circular(20),
@@ -261,27 +317,40 @@ class _DashState extends State<Dashboard> {
   }
 
   Widget _metric(
-      String title, String val, String unit, IconData icon, ColorScheme cs) {
+    String title,
+    String val,
+    String unit,
+    IconData icon,
+    ColorScheme cs,
+  ) {
+    Color colour = cs.primary; // default when N/A
+    if (val != 'N/A') {
+      final v = int.tryParse(val) ?? 0;
+      colour = title.startsWith('eCO') ? colourForEco2(v) : colourForTvoc(v);
+    }
+    final onColour = _contrastOn(colour);
+
     return FlipCard(
       speed: 400,
       front: Card(
         child: ListTile(
-          leading: Icon(icon, size: 36, color: cs.primary),
+          leading: Icon(icon, size: 36, color: colour),
           title: Text(title),
-          subtitle: Text('$val $unit',
-              style: Theme.of(context).textTheme.headlineMedium),
+          subtitle: Text(
+            '$val $unit',
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
         ),
       ),
       back: Card(
-        color: cs.primaryContainer,
+        color: colour,
         child: Center(
           child: Text(
             'Latest\n$val $unit',
             textAlign: TextAlign.center,
-            style: Theme.of(context)
-                .textTheme
-                .headlineMedium!
-                .copyWith(color: cs.onPrimaryContainer),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineMedium!.copyWith(color: onColour),
           ),
         ),
       ),

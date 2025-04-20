@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_map: ^8.1.1          # Leaflet renderer
+  latlong2:    ^0.9.0          # LatLng class used by flutter_map
   flutter_blue_plus: ^1.30.5
   google_maps_flutter: ^2.1.1  # To show maps
   geolocator: ^8.2.0           # To get GPS location
