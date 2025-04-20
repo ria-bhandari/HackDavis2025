@@ -46,6 +46,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '431193258328',
     projectId: 'breathe-app-95c7a',
     authDomain: 'breathe-app-95c7a.firebaseapp.com',
+    databaseURL: 'https://breathe-app-95c7a.firebaseio.com',
     storageBucket: 'breathe-app-95c7a.firebasestorage.app',
     measurementId: 'G-W8R08KNB1G',
   );

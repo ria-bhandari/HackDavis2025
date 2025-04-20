@@ -1,139 +1,81 @@
+// lib/ble_provider.dart
 import 'dart:async';
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:geolocator/geolocator.dart';
 
 class BleProvider extends ChangeNotifier {
-  // Nordic UART Service UUIDs
-  final Guid nusService = Guid('6E400001-B5A3-F393-E0A9-E50E24DCCA9E');
-  final Guid nusTxChar  = Guid('6E400003-B5A3-F393-E0A9-E50E24DCCA9E');
-
-  BluetoothDevice? device;
-  BluetoothConnectionState connectionState = BluetoothConnectionState.disconnected;
+  /* Public state */
   String status = 'Idle';
   String eco2 = 'N/A', tvoc = 'N/A';
   Position? position;
 
-  StreamSubscription<List<ScanResult>>? _scanSub;
-  StreamSubscription<BluetoothConnectionState>? _stateSub;
+  /* BLE internals */
+  BluetoothDevice? _dev;
   StreamSubscription<List<int>>? _charSub;
-  String _buffer = '';
+  final _svc = Guid('6E400001-B5A3-F393-E0A9-E50E24DCCA9E');
+  final _tx = Guid('6E400003-B5A3-F393-E0A9-E50E24DCCA9E');
+  String _buf = '';
 
-  /// Start a one‑shot scan → connect → subscribe flow.
+  /// Start scan & connect
   Future<void> scanAndConnect() async {
-    if (device != null) return; // already connected
-
-    // On Android, request location permission (needed for BLE scanning)
-    if (!kIsWeb && Platform.isAndroid) {
-      await Geolocator.requestPermission();
-    }
-
     status = 'Scanning…';
     notifyListeners();
-
-    // 1️⃣ Begin scanning, filtered by your NUS service
-    FlutterBluePlus.startScan(
-      withServices: [nusService],
+    await FlutterBluePlus.startScan(
+      withServices: [_svc],
       timeout: const Duration(seconds: 5),
     );
-
-    // 2️⃣ Listen for scan results
-    _scanSub = FlutterBluePlus.scanResults.listen((results) async {
-      if (device != null) return;      // already connected in flight
-      if (results.isEmpty) return;     // no peripherals yet
-
-      // take the first one
-      final match = results.first;
-      device = match.device;
-
-      // stop scanning
+    FlutterBluePlus.scanResults.listen((results) async {
+      if (results.isEmpty) return;
+      _dev = results.first.device;
       await FlutterBluePlus.stopScan();
-      await _scanSub?.cancel();
-
-      status = 'Connecting to ${device!.name}…';
+      await _dev!.connect();
+      status = 'Connected to ${_dev!.name}';
       notifyListeners();
 
-      // listen to connection changes
-      _stateSub = device!.state.listen((s) {
-        connectionState = s;
-        status = s == BluetoothConnectionState.connected
-            ? 'Connected to ${device!.name}'
-            : 'Disconnected';
-        notifyListeners();
-
-        if (s == BluetoothConnectionState.connected) {
-          _discoverTx();
-          _updateLocation();
-        }
-      });
-
-      // actually connect
-      try {
-        await device!.connect(autoConnect: false);
-      } catch (_) {
-        // might already be connected
-      }
-    });
-
-    // 3️⃣ Fallback: after 5s, if still no device, cancel & report
-    Future.delayed(const Duration(seconds: 5), () async {
-      if (device == null) {
-        await FlutterBluePlus.stopScan();
-        await _scanSub?.cancel();
-        status = 'No device found';
-        notifyListeners();
-      }
-    });
-  }
-
-  Future<void> _discoverTx() async {
-    final services = await device!.discoverServices();
-    for (final svc in services) {
-      if (svc.uuid == nusService) {
-        for (final c in svc.characteristics) {
-          if (c.uuid == nusTxChar) {
+      // subscribe to notifications
+      for (final s in await _dev!.discoverServices()) {
+        if (s.uuid != _svc) continue;
+        for (final c in s.characteristics) {
+          if (c.uuid == _tx) {
             await c.setNotifyValue(true);
-            _charSub = c.value.listen(_onData);
-            return;
+            _charSub = c.value.listen(_onBleData);
+            break;
           }
         }
       }
-    }
-    status = 'TX char not found';
-    notifyListeners();
+      // immediately fetch position
+      _updatePosition();
+    });
   }
 
-  void _onData(List<int> bytes) {
-    _buffer += String.fromCharCodes(bytes);
-    if (!_buffer.contains('\n')) return;
-
-    final lines = _buffer.split('\n');
-    _buffer = lines.removeLast();
-
-    for (final line in lines) {
-      final parts = line.split(',');
-      if (parts.length == 2) {
-        eco2 = parts[0];
-        tvoc = parts[1];
-        notifyListeners();
-        _updateLocation();
-      }
+  /// Parse incoming BLE lines
+  void _onBleData(List<int> data) {
+    _buf += String.fromCharCodes(data);
+    if (!_buf.contains('\n')) return;
+    final lines = _buf.split('\n');
+    _buf = lines.removeLast();
+    for (final l in lines) {
+      final p = l.split(',');
+      if (p.length != 2) continue;
+      eco2 = p[0];
+      tvoc = p[1];
+      notifyListeners();
     }
   }
 
-  Future<void> _updateLocation() async {
+  /// One‑shot high‑accuracy GPS
+  Future<void> _updatePosition() async {
     position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high);
+      desiredAccuracy: LocationAccuracy.best,
+    );
     notifyListeners();
   }
 
   @override
   void dispose() {
-    _scanSub?.cancel();
-    _stateSub?.cancel();
     _charSub?.cancel();
+    _dev?.disconnect();
     super.dispose();
   }
 }
